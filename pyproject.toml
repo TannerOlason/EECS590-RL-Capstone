@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "highground-rl"
+version = "0.1.0"
+description = "High Ground SRPG — RL methods study (SARSA(λ) → PPO → MAPPO)"
+requires-python = ">=3.10"
+dependencies = [
+    "gymnasium>=0.29",
+    "pettingzoo>=1.24",
+    "stable-baselines3>=2.1",
+    "sb3-contrib>=2.1",
+    "numpy>=1.24",
+    "rich>=13.0",
+    "matplotlib>=3.7",
+    "benchmarl>=1.5",
+    "torchrl>=0.11",
+    "tensordict>=0.11",
+]
+
+[project.optional-dependencies]
+llm = [
+    "openai>=1.0",
+    "instructor>=0.4",
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["highground*", "classical*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

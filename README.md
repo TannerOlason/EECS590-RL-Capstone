@@ -1,84 +1,139 @@
-# Dynamic Reinforcement Learning in Gridworld Settings
+# High Ground SRPG — RL Methods Study
 
-The goal of this project is to develop and study RL algorithms 
-in a changing gridworld environment. The end goal of this project
-is to create a framework that trains NPCs to adjust their schedules
-and actions to changes in the environment caused by the player's 
-interactions with the world. These actions can range from a player
-destroying a road's bridge or taking on a bandit role and causing 
-NPCs to avoid the area they do their robbing in.
+A self-contained RL project extracted from the QD map-evolution pipeline.
+The environment is a 3v3 turn-based tactics game on a 13×13 procedurally
+generated grid.  This repository is an RL methods study, covering the
+progression from classical tabular methods to modern multi-agent deep RL.
 
-Agents should have features that conform to a world model of a 
-medieval fantasy game. This includes socializing to share information 
-on state space and updating their routes and routines. As NPCs aren't 
-often uniform, multiple values will have to be assigned per grid square 
-that represent different properties. Simply, danger level will matter 
-less to a knight than to a trader, and a destroyed bridge will matter 
-the same to everyone.
+## Algorithm Lineage
 
-The overall goal of this project will be to use it as an adversarial 
-AI to a procedural generation AI in order to produce functional, but 
-interesting gridworld environments.
+```
+SARSA(λ)  →  PPO  →  MAPPO (CTDE)
+   ↑               ↑
+eligibility    Generalized Advantage Estimation (GAE)
+ traces         uses the same λ-decay weighting
+```
 
-## Impelementation
+The λ in SARSA(λ) and the λ in GAE are the same idea: weight earlier
+transitions by λ^k, interpolating between fully bootstrapped (λ=0, TD(0))
+and full Monte-Carlo returns (λ=1).  This connection is made explicit in
+`scripts/run_sarsa.py`.
 
-This project will use gymnasium and pettingzoo for their ability 
-to run parallel agents in an environment where every agent does 
-their turn at the same time.
+## Environment
 
-A routine will be established as a continuing MDP for each agent. 
-Obstructions to their paths will be introduced, and the agents 
-will have to adapt their routines. 
+| Property | Value |
+|----------|-------|
+| Grid | 13×13 procedural terrain |
+| Teams | 2 teams × 3 units (Fighter, Ranger, Charger) |
+| Actions | 12 per unit (8 moves + 3 attacks + end turn) |
+| Observation | 418-dimensional per unit (local + terrain features) |
+| Global state | 836-dimensional (for centralised critic) |
+| Episode length | ≤ 50 turns |
 
-### Markov Decision Process
+## Quick Start
 
-This is a continueing MDP, so state is defined by `s = (x, y, k)` 
-where k is the route index. and x and y are the coords. 
+```bash
+pip install -e .
 
-Transitions are "if waypoint reached, `k' = (k + 1) mod 4` 
-otherwise `k' = k`.
+# Classical RL: SARSA(λ) on navigation subtask (runs in seconds)
+python scripts/run_sarsa.py --compare --plot plots/sarsa_curves.png
 
-Rewards will be shaped by progress towards the current route goal 
-with the largest reward received when each goal is reached.
+# Analyse the bundled MAPPO checkpoint
+python scripts/run_analysis.py --episodes 20
 
-### Dynamic Programming
+# Train MAPPO from scratch (requires BenchMARL)
+python scripts/train_mappo.py
+```
 
+## Project Layout
 
+```
+rl/
+├── classical/
+│   ├── nav_env.py          # Simplified 13×13 navigation subtask
+│   └── sarsa_lambda.py     # SARSA(λ) + SarsaN (n-step variant)
+├── highground/
+│   ├── engine/             # Game engine (Grid, Units, GameState, combat)
+│   ├── env/                # Gymnasium + PettingZoo wrappers
+│   ├── training/           # MAPPO via BenchMARL (benchmarl_train.py)
+│   │   └── cnn_model.py    # CNN+MLP spatial architecture
+│   ├── maps/               # Static map presets
+│   ├── metrics/            # Terrain exploitation metrics
+│   ├── viz/
+│   │   ├── render_map.py   # Matplotlib grid renderer
+│   │   ├── replay.py       # Frame-by-frame GIF export
+│   │   └── model_analysis.py  # Training curves, action dist, saliency
+│   └── llm/                # [Optional] LLM steering extension
+├── models/
+│   └── mappo_phase7_policy.pt   # Best trained checkpoint (curriculum phase 7)
+├── scripts/
+│   ├── run_sarsa.py        # Train + evaluate SARSA variants
+│   ├── train_mappo.py      # Train MAPPO (delegates to benchmarl_train.py)
+│   ├── run_analysis.py     # Model analysis and saliency plots
+│   └── smoke_test_viewer.py  # [Optional] LLM steering TUI demo
+└── tests/
+    ├── test_engine.py
+    └── test_env.py
+```
 
-### Agent Framework
+## Algorithm Justifications
 
-Agents have a route of four coordinates to follow. They are rewarded 
-when they reach the current goal coord, then the goal coord 
-is changed to the next coord in the route. Their actions are simply 
-move up, down, right or left. For now, there is no benefit to staying 
-in one place, so it is not included.
+### Why MAPPO and not the others?
 
-## Install and Run
+| Algorithm | Decision |
+|-----------|----------|
+| **MAPPO** | ✓ Chosen. Multi-agent PPO with CTDE: per-team centralised critic during training, each unit acts on its own local observation. Handles joint coordination. |
+| REINFORCE | PPO is a variance-reduced, trust-region-constrained superset. REINFORCE without the clip objective would diverge on the multi-phase curriculum. |
+| Vanilla Actor-Critic | MAPPO with CTDE is actor-critic with a better critic architecture. Single-agent A2C is a regression. |
+| DQN | Discrete Q-learning doesn't extend naturally to shared-policy multi-agent. MAPPO is strictly better here. |
+| DDPG / TD3 | Continuous-action algorithms. The action space here is discrete (12 actions). Not applicable. |
+| SAC | Also continuous-action. Max-entropy framework is interesting but requires discretisation and a replay buffer. On-policy PPO is more appropriate for curriculum training. |
+| TRPO | PPO was designed as the practical replacement for TRPO. The clip objective gives the same trust-region guarantee without the Fisher-vector products. |
 
-Windows
+### Why SARSA(λ) for the classical baseline?
 
-Activate the venv environment
+SARSA is on-policy, exactly like PPO.  The eligibility trace (λ) is the
+direct conceptual ancestor of GAE.  One implementation covers both the
+trace-based and n-cutoff (SarsaN) variants.  Q-learning is off-policy
+and would break the on-policy narrative.
 
-`.\venv\Scripts\activate`
+## MAPPO Architecture
 
-Install python libraries
+```
+Observation (418-dim)
+    ↓
+[Spatial channels]  [Unit features]
+ 13×13×2 terrain     80-dim vector
+    ↓                    ↓
+ Conv 8×(3×3)       passthrough
+ Conv 16×(3×3)
+ Conv 32×(3×3)
+    ↓ flatten
+    └──────────────────┘
+          ↓
+     Linear(256)
+     ReLU
+     Linear(128)
+     ReLU
+        ↓
+  Action logits (12)    Value head
+```
 
-`pip install -r requirements.txt`
+Actor and critic are trained with:
+- Clipped PPO objective (ε = 0.2)
+- GAE advantage estimation (λ = 0.95)
+- Entropy regularisation (0.05 → 0.02 → 0.01 across curriculum phases)
+- Action masking (invalid moves/attacks zeroed before softmax)
 
-Linux
+## Optional: LLM Steering
 
-Activate the venv environment
+With `pip install -e ".[llm]"`, the `highground/llm/` extension provides
+LLM-based logit steering of the trained policy.  Run the interactive viewer:
 
-`source venv/vin/activate`
+```bash
+python scripts/smoke_test_viewer.py
+```
 
-Install python libraries
-
-`pip install -r requirements.txt`
-
-Run on either
-
-`python run.py`
-
-Run with human output
-
-`python run_human.py`
+This shows per-action probability bars across four steering variants
+(baseline, aggressive, defensive, terrain-aware), making it a manual
+saliency viewer for the policy's action distribution.
