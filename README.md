@@ -137,3 +137,10 @@ python scripts/smoke_test_viewer.py
 This shows per-action probability bars across four steering variants
 (baseline, aggressive, defensive, terrain-aware), making it a manual
 saliency viewer for the policy's action distribution.
+
+# LLM Usage Disclaimer
+
+Portions of this software were generated with the assistance of LLMs.
+The code has been reviewed, tested, and modified by human maintainers.
+However, as AI can produce unexpected results, users should thoroughly
+vet this software before utilizing it in production environments.
