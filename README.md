@@ -5,6 +5,14 @@ The environment is a 3v3 turn-based tactics game on a 13×13 procedurally
 generated grid.  This repository is an RL methods study, covering the
 progression from classical tabular methods to modern multi-agent deep RL.
 
+> **V3 (continuous-action, scrolling world)** lives under
+> [`v3-continuous-space/`](v3-continuous-space/README.md). It reuses the V2
+> engine (combat, terrain, units) but swaps the action space to a continuous
+> `Box(3,)` and the world to an infinite, procedurally generated, left→right
+> scrolling strip. Algorithm: **SAC** (off-policy, max-entropy) via
+> stable-baselines3 — the off-policy / continuous-action contrast to V2's
+> on-policy / discrete MAPPO.
+
 ## Algorithm Lineage
 
 ```
